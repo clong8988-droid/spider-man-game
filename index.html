@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="icon" href="data:,">
 <title>Spider-Man: City Swing ULTIMATE (Motion)</title>
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:Arial,Helvetica,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
@@ -40,9 +41,10 @@ canvas{display:block}
 <p>🚨 Follow the red beam to stop crimes, and beat the Sky Raider boss after every 3 crimes!</p>
 <p>📱 On a phone, drag the right side to look, use the left stick to steer, and tap the buttons.</p>
 <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:14px">
-<b class="go" data-mode="normal">▶ PLAY</b><b class="go" data-mode="tilt" style="background:#2a6be2;box-shadow:0 0 20px #39f">📱 TILT MODE</b><b class="go" data-mode="hand" style="background:#1a9a4a;box-shadow:0 0 20px #3f8">✋ HAND TRACKING</b></div>
-<p style="opacity:.85;margin-top:12px">📱 <b>Tilt mode:</b> tilt your phone to look and steer, and tap SWING. ✋ <b>Hand tracking:</b> move your hand to aim. Make a fist to swing, open your hand to let go, show two fingers ✌️ to shoot, and point 👆 to zip.</p></div>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<b class="go" data-mode="normal">▶ PLAY</b><b class="go" data-mode="tilt" style="background:#2a6be2;box-shadow:0 0 20px #39f">📱 TILT MODE</b><b class="go" data-mode="hand" style="background:#1a9a4a;box-shadow:0 0 20px #3f8">✋ HAND TRACKING</b><b class="go" data-mode="vr" style="background:#7a3be2;box-shadow:0 0 20px #a6f;opacity:.6">🥽 Checking VR…</b></div>
+<p style="opacity:.85;margin-top:12px">📱 <b>Tilt mode:</b> tilt your phone to look and steer, and tap SWING. ✋ <b>Hand tracking:</b> move your hand to aim. Make a fist to swing, open your hand to let go, show two fingers ✌️ to shoot, and point 👆 to zip.</p>
+<p style="opacity:.85">🥽 <b>Meta Quest VR:</b> open this page in the Quest browser and press ENTER VR. Pull a <b>trigger</b> to shoot a web from that hand and swing (use both hands!). <b>Grip</b> or <b>A/X</b> = web zip. <b>B/Y</b> = web shot. <b>Left stick</b> = move. <b>Right stick</b> = turn. Click the right stick to switch the comfort vignette on or off.</p></div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
 const $=id=>document.getElementById(id);
@@ -50,9 +52,12 @@ const isTouch='ontouchstart' in window||navigator.maxTouchPoints>0;
 const renderer=new THREE.WebGLRenderer({antialias:!isTouch,powerPreference:'high-performance'});
 renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,isTouch?1.5:2));
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.xr.enabled=true;// WebXR VR mode (Meta Quest)
 document.body.insertBefore(renderer.domElement,document.body.firstChild);
 const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x3a2a5a,0.0022);
 const cam=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.5,3000);
+// player rig: in VR the headset camera lives inside this group, which follows Spider-Man (identity when not in VR)
+const rig=new THREE.Group();rig.add(cam);scene.add(rig);let rigYaw=0;
 const lc=$('lines'),lx=lc.getContext('2d');
 function resize(){cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);lc.width=innerWidth;lc.height=innerHeight}
 resize();addEventListener('resize',resize);
@@ -62,7 +67,7 @@ const sky=new THREE.Mesh(new THREE.SphereGeometry(2000,32,16),new THREE.ShaderMa
  vertexShader:'varying vec3 p;void main(){p=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
  fragmentShader:'uniform vec3 top,mid,bot;varying vec3 p;float h(vec2 v){return fract(sin(dot(v,vec2(12.9,78.2)))*43758.5);}void main(){float y=p.y;vec3 c=y>0.15?mix(mid,top,smoothstep(.15,.7,y)):mix(bot,mid,smoothstep(-.05,.15,y));vec2 g=floor(p.xz/max(p.y,.01)*80.);float s=step(.997,h(g))*smoothstep(.3,.8,y);gl_FragColor=vec4(c+s,1.);}'}));
 scene.add(sky);
-const moon=new THREE.Mesh(new THREE.SphereGeometry(40,24,24),new THREE.MeshBasicMaterial({color:0xfff3c8,fog:false}));moon.position.set(-700,600,-1200);scene.add(moon);
+const moon=new THREE.Mesh(new THREE.SphereGeometry(40,24,24),new THREE.MeshBasicMaterial({color:0xfff3c8,fog:false}));moon.position.set(-700,600,-1200);sky.add(moon);
 scene.add(new THREE.HemisphereLight(0x8fa8ff,0x402040,1.0));
 const sun=new THREE.DirectionalLight(0xffb48a,1.6);sun.position.set(-200,300,-400);scene.add(sun);
 // ---------- textures ----------
@@ -127,7 +132,7 @@ for(const [l,s] of[[legL,-1],[legR,1]]){const b=new THREE.Mesh(new THREE.Capsule
 scene.add(spidey);
 // web line (tube for thickness)
 const webMat=new THREE.MeshBasicMaterial({color:0xffffff});let webMesh=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,1,5),webMat);webMesh.visible=false;scene.add(webMesh);
-function placeWeb(a,b){const d=b.clone().sub(a);webMesh.scale.set(1,d.length(),1);webMesh.position.copy(a).addScaledVector(d,.5);webMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize())}
+function placeWeb(a,b,wm=webMesh){const d=b.clone().sub(a);wm.scale.set(1,d.length(),1);wm.position.copy(a).addScaledVector(d,.5);wm.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize())}
 // ---------- particles ----------
 const PMAX=600,pGeo=new THREE.BufferGeometry(),pPos=new Float32Array(PMAX*3),pCol=new Float32Array(PMAX*3),parts=[];
 pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
@@ -165,7 +170,8 @@ const boss=new THREE.Group();{const bm=new THREE.MeshPhongMaterial({color:0x2f6b
 // ---------- state ----------
 const pos=new THREE.Vector3(),vel=new THREE.Vector3();let yaw=0,pitch=-.1,web=null,score=0,hp=100,hurt=0,playing=false,paused=false,keys={},best=+localStorage.spideyUltBest||0;
 let combo=1,comboT=0,mission=null,crimes=0,bossOn=false,bossHP=0,bossCool=0,wall=null,t=0,shake=0,fovKick=0,swingPhase=0,banTimer=0;
-function banner(s,time=2){const b=$('banner');b.textContent=s;b.style.opacity=1;banTimer=time}
+let vrBanner='',vrBanT=0;
+function banner(s,time=2){const b=$('banner');b.textContent=s;b.style.opacity=1;banTimer=time;vrBanner=s;vrBanT=time}
 function addScore(n,p){score+=n*combo;combo=Math.min(combo+1,10);comboT=3}
 function reset(){pos.set(0,90,0);vel.set(0,0,-25);yaw=0;pitch=-.1;web=null;score=0;hp=100;hurt=0;combo=1;crimes=0;bossOn=false;boss.visible=false;$('bossbar').style.display='none';wall=null;
  tokens.forEach(k=>k.visible=true);if(!drones.length)for(let i=0;i<22;i++)makeDrone();else drones.forEach(spawnDrone);lasers.forEach(l=>scene.remove(l));lasers.length=0;newMission()}
@@ -176,7 +182,7 @@ function startBoss(){bossOn=true;bossHP=30;boss.visible=true;boss.position.set(p
 // ---------- input ----------
 const msg=$('msg');
 let mode='normal';
-msg.addEventListener('click',async e=>{const btn=e.target.closest('[data-mode]');const m=btn?btn.dataset.mode:'normal';audio();
+msg.addEventListener('click',async e=>{const btn=e.target.closest('[data-mode]');const m=btn?btn.dataset.mode:'normal';if(m==='vr'){enterVR();return}audio();
  if(m==='tilt'){if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission){try{const r=await DeviceOrientationEvent.requestPermission();if(r!=='granted'){alert('Motion permission was denied, so tilt mode is off.');return}}catch(err){alert('Tilt mode needs the page opened over https on iPhone.');return}}startTilt()}
  if(m==='hand'&&!handOn){const ok=await startHand();if(!ok)return}
  mode=m;reset();playing=true;msg.style.display='none';showTouch(true);if(!isTouch&&m==='normal')renderer.domElement.requestPointerLock()});
@@ -213,21 +219,21 @@ document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockEleme
 renderer.domElement.addEventListener('click',()=>{if(playing&&paused&&!isTouch){paused=false;banner('',0);renderer.domElement.requestPointerLock()}});
 const ray=new THREE.Raycaster();
 function lookDir(){return new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch))}
-function findAnchor(minUp=.35,far=260){const d=lookDir();d.y=Math.max(d.y,minUp);d.normalize();ray.set(pos,d);ray.far=far;const h=ray.intersectObjects(bMeshes)[0];if(h)return h.point.clone();
- const f=lookDir();f.y=0;f.normalize();let bestP=null,bs=-1e9;for(const b of buildings){const c=new THREE.Vector3((b.minX+b.maxX)/2,b.h,(b.minZ+b.maxZ)/2);const v=c.clone().sub(pos),dist=v.length();if(dist>far||b.h<pos.y-10)continue;
+function findAnchor(minUp=.35,far=260,dir=null){const d=dir?dir.clone():lookDir();d.y=Math.max(d.y,minUp);d.normalize();ray.set(pos,d);ray.far=far;const h=ray.intersectObjects(bMeshes)[0];if(h)return h.point.clone();
+ const f=dir?dir.clone():lookDir();f.y=0;f.normalize();let bestP=null,bs=-1e9;for(const b of buildings){const c=new THREE.Vector3((b.minX+b.maxX)/2,b.h,(b.minZ+b.maxZ)/2);const v=c.clone().sub(pos),dist=v.length();if(dist>far||b.h<pos.y-10)continue;
   const s=v.clone().setY(0).normalize().dot(f)*120-dist*.35;if(s>bs){bs=s;bestP=c}}
  if(!bestP){bestP=pos.clone().addScaledVector(f,60);bestP.y=pos.y+70}// sky anchor fallback (like the games)
  return bestP}
 function shootWeb(){if(!playing||paused)return;audio();if(wall){vel.copy(wall.n).multiplyScalar(30);vel.y=35;wall=null;sfx.zip();return}
  const a=findAnchor();web={a,len:a.distanceTo(pos)*.92};sfx.thwip()}
 function releaseWeb(){if(web){vel.y+=8;vel.addScaledVector(vel.clone().setY(0).normalize(),6)}web=null}
-function zip(){if(!playing||paused)return;audio();wall=null;const d=lookDir();ray.set(pos,d);ray.far=200;const h=ray.intersectObjects(bMeshes)[0];const target=h?h.point:pos.clone().addScaledVector(d,80);
- const dir=target.sub(pos).normalize();vel.copy(dir.multiplyScalar(85));vel.y+=10;web=null;fovKick=18;sfx.zip();burst(pos,0xffffff,20,15)}
-function shootBall(){if(!playing||paused)return;audio();let dir=lookDir();
+function zip(aimDir){if(!playing||paused)return;audio();wall=null;const d=aimDir&&aimDir.isVector3?aimDir.clone():lookDir();ray.set(pos,d);ray.far=200;const h=ray.intersectObjects(bMeshes)[0];const target=h?h.point:pos.clone().addScaledVector(d,80);
+ const dir=target.sub(pos).normalize();vel.copy(dir.multiplyScalar(85));vel.y+=10;web=null;vrWebs[0]=vrWebs[1]=null;fovKick=18;sfx.zip();burst(pos,0xffffff,20,15)}
+function shootBall(aim,origin){if(!playing||paused)return;audio();let dir=aim&&aim.isVector3?aim.clone().normalize():lookDir();
  // aim assist: nearest target in front
  let bestT=null,bd=0.93;const cands=[...drones.filter(d=>d.userData.alive&&d.visible),...thugs.filter(x=>x.visible&&x.userData.alive)];if(bossOn)cands.push(boss);
  for(const c of cands){const v=c.position.clone().add(new THREE.Vector3(0,c===boss?0:1.5,0)).sub(pos);if(v.length()>220)continue;const dd=v.normalize().dot(dir);if(dd>bd){bd=dd;bestT=v}}
- if(bestT)dir=bestT;const m=new THREE.Mesh(ballGeo,white);m.position.copy(pos).add(new THREE.Vector3(0,1.5,0));m.userData={v:dir.multiplyScalar(170),life:1.6};scene.add(m);balls.push(m);sfx.shoot()}
+ if(bestT)dir=bestT;const m=new THREE.Mesh(ballGeo,white);m.position.copy(origin&&origin.isVector3?origin:pos.clone().add(new THREE.Vector3(0,1.5,0)));m.userData={v:dir.multiplyScalar(170),life:1.6};scene.add(m);balls.push(m);sfx.shoot()}
 addEventListener('mousedown',e=>{if(!playing||isTouch||paused)return;if(e.button===0)shootWeb();else if(e.button===2)zip()});
 addEventListener('mouseup',e=>{if(!isTouch&&e.button===0)releaseWeb()});addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('keydown',e=>{keys[e.code]=true;if(e.repeat)return;if(e.code==='Space'){e.preventDefault();shootWeb()}if(e.code==='KeyF')shootBall();if(e.code==='KeyE')zip()});
@@ -243,10 +249,84 @@ if(isTouch){const on=(id,down,up)=>{const el=$(id);el.addEventListener('touchsta
  cv.addEventListener('touchstart',e=>{e.preventDefault();for(const tc of e.changedTouches)if(lid===null){lid=tc.identifier;lx0=tc.clientX;ly0=tc.clientY}},{passive:false});
  cv.addEventListener('touchmove',e=>{e.preventDefault();for(const tc of e.changedTouches)if(tc.identifier===lid){yaw-=(tc.clientX-lx0)*.007;pitch=Math.max(-1.25,Math.min(1.25,pitch-(tc.clientY-ly0)*.007));lx0=tc.clientX;ly0=tc.clientY}},{passive:false});
  cv.addEventListener('touchend',e=>{for(const tc of e.changedTouches)if(tc.identifier===lid)lid=null})}
+// ---------- WebXR VR mode (Meta Quest browser) ----------
+let vrOn=false,vrDead=false,vrSupported=false,vrSession=null,vrSnapReady=true,vrHudT=0,vrVig=true,vigAmt=0;
+const vrMove={x:0,y:0},vrWebs=[null,null];// per-hand webs: 0 = left hand, 1 = right hand
+const _o=new THREE.Vector3(),_d=new THREE.Vector3(),_q=new THREE.Quaternion();
+function vrLabel(){return vrSupported?'🥽 ENTER VR':'🥽 VR not supported'}
+function vrSetBtns(){document.querySelectorAll('[data-mode=vr]').forEach(b=>{b.textContent=vrLabel();b.style.opacity=vrSupported?1:.45;b.style.cursor=vrSupported?'pointer':'default';
+ b.title=vrSupported?'Play in your Meta Quest headset':'VR needs a headset browser such as the Meta Quest browser'})}
+try{if(navigator.xr&&window.isSecureContext&&navigator.xr.isSessionSupported){navigator.xr.isSessionSupported('immersive-vr').then(ok=>{vrSupported=!!ok;vrSetBtns()}).catch(()=>{vrSupported=false;vrSetBtns()})}else vrSetBtns()}catch(e){vrSetBtns()}
+function enterVR(){if(!vrSupported||vrSession||!navigator.xr)return;audio();
+ navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']}).then(onVRStart).catch(err=>{console.warn('VR session failed',err);alert('VR could not start: '+err.message)})}
+async function onVRStart(session){vrSession=session;session.addEventListener('end',onVREnd);
+ renderer.xr.setReferenceSpaceType('local');// origin = your head when VR starts (works seated or standing)
+ cam.near=.1;cam.far=1000;cam.updateProjectionMatrix();sky.scale.setScalar(.45);
+ await renderer.xr.setSession(session);try{renderer.xr.setFoveation(1)}catch(e){}
+ vrOn=true;mode='vr';paused=false;banner('',0);if(document.exitPointerLock)document.exitPointerLock();
+ rigYaw=0;reset();playing=true;vrDead=false;vrWebs[0]=vrWebs[1]=null;msg.style.display='none';showTouch(false);hudPanel.visible=true;vig.visible=true;
+ banner('Pull a TRIGGER to swing!',4)}
+function onVREnd(){vrSession=null;vrOn=false;mode='normal';vrDead=false;vrWebs[0]=vrWebs[1]=null;
+ rig.position.set(0,0,0);rig.rotation.set(0,0,0);rig.updateMatrixWorld(true);cam.near=.5;cam.far=3000;cam.fov=72;sky.scale.setScalar(1);setTimeout(resize,0);
+ hudPanel.visible=false;vig.visible=false;vrHands.forEach(h=>{h.wm.visible=false;h.prev=[]});
+ if(playing){playing=false;showTouch(false)}msg.style.display='flex';vrSetBtns()}
+// controllers: target-ray space (for aiming) + grip space (for the 3D controller model)
+const vrHands=[0,1].map(i=>{const c=renderer.xr.getController(i),g=renderer.xr.getControllerGrip(i);rig.add(c,g);
+ const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.55}));line.scale.z=8;c.add(line);
+ const tip=new THREE.Mesh(new THREE.SphereGeometry(.015,8,8),new THREE.MeshBasicMaterial({color:0xff3344}));tip.position.z=-.02;c.add(tip);
+ const wm=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,1,5),webMat);wm.visible=false;wm.frustumCulled=false;scene.add(wm);
+ const h={c,g,wm,src:null,side:i,prev:[]};
+ c.addEventListener('connected',e=>{h.src=e.data;h.side=e.data.handedness==='left'?0:1;line.visible=e.data.targetRayMode==='tracked-pointer';if(h.side===0)g.add(wristPanel)});
+ c.addEventListener('disconnected',()=>{h.src=null;h.prev=[];if(vrWebs[h.side])vrWebs[h.side]=null});
+ return h});
+if(navigator.xr)import('three/addons/webxr/XRControllerModelFactory.js').then(({XRControllerModelFactory})=>{const f=new XRControllerModelFactory();vrHands.forEach(h=>h.g.add(f.createControllerModel(h.g)))})
+ .catch(e=>{console.warn('Controller models unavailable, using simple shapes',e);vrHands.forEach(h=>h.g.add(new THREE.Mesh(new THREE.BoxGeometry(.05,.05,.14),new THREE.MeshLambertMaterial({color:0xc8141c}))))});
+function buzz(h,s=.5,ms=50){try{const a=h.src&&h.src.gamepad&&h.src.gamepad.hapticActuators;if(a&&a[0])a[0].pulse(s,ms)}catch(e){}}
+function ctrlRay(h){h.c.getWorldPosition(_o);h.c.getWorldQuaternion(_q);return{o:_o.clone(),d:new THREE.Vector3(0,0,-1).applyQuaternion(_q).normalize()}}
+function vrShootWeb(h){if(!playing)return;audio();if(wall){shootWeb();buzz(h,.6,60);return}// jump off the wall
+ const {o,d}=ctrlRay(h);ray.set(o,d);ray.far=300;const hit=ray.intersectObjects(bMeshes)[0];
+ const a=(hit&&hit.point.y>pos.y-5)?hit.point.clone():findAnchor(.3,260,d);// aim assist when pointing at sky/ground
+ vrWebs[h.side]={a,len:a.distanceTo(pos)*.92};sfx.thwip();buzz(h,.7,40)}
+function vrRelease(h){if(!vrWebs[h.side])return;vrWebs[h.side]=null;if(!vrWebs[1-h.side]){vel.y+=8;vel.addScaledVector(vel.clone().setY(0).normalize(),6)}}
+function placeRig(){rig.position.set(pos.x,pos.y-.4,pos.z);rig.rotation.set(0,rigYaw,0);rig.updateMatrixWorld(true)}// eyes ~1.8m above Spidey's feet; yaw only (no roll/pitch)
+function vrInput(){vrMove.x=vrMove.y=0;let turn=0;
+ for(const h of vrHands){const gp=h.src&&h.src.gamepad;if(!gp)continue;const b=i=>!!(gp.buttons[i]&&gp.buttons[i].pressed);
+  const now=[b(0),b(1),b(4),b(5),b(3)],was=h.prev,down=i=>now[i]&&!was[i],up=i=>!now[i]&&was[i];
+  if(vrDead){if(down(0)){vrDead=false;reset();playing=true;vrWebs[0]=vrWebs[1]=null;msg.style.display='none';banner('GO GO SPIDER-MAN!',2)}}
+  else if(playing){if(down(0))vrShootWeb(h);if(up(0))vrRelease(h);// trigger = swing from this hand
+   if(down(1)||down(2)){zip(ctrlRay(h).d);buzz(h,1,90)}// grip or A/X = web zip
+   if(down(3)){const r=ctrlRay(h);shootBall(r.d,r.o);buzz(h,.4,30)}}// B/Y = web shot
+  if(down(4)&&h.side===1){vrVig=!vrVig;banner(vrVig?'Comfort vignette ON':'Comfort vignette OFF',1.5)}
+  h.prev=now;const ax=gp.axes.length>=4?gp.axes[2]:(gp.axes[0]||0),ay=gp.axes.length>=4?gp.axes[3]:(gp.axes[1]||0);
+  if(h.side===0){vrMove.x=Math.abs(ax)>.15?ax:0;vrMove.y=Math.abs(ay)>.15?ay:0}else turn=ax}
+ if(Math.abs(turn)>.7){if(vrSnapReady){rigYaw-=Math.sign(turn)*Math.PI/6;vrSnapReady=false}}else if(Math.abs(turn)<.3)vrSnapReady=true}// snap turn 30°
+// VR HUD: canvas texture on a small panel below your view + a mini one on your left wrist
+const hudCv=document.createElement('canvas');hudCv.width=512;hudCv.height=256;const hudCx=hudCv.getContext('2d');const hudTex=new THREE.CanvasTexture(hudCv);hudTex.colorSpace=THREE.SRGBColorSpace;
+const hudMat=new THREE.MeshBasicMaterial({map:hudTex,transparent:true,depthTest:false,depthWrite:false,fog:false});
+const hudPanel=new THREE.Mesh(new THREE.PlaneGeometry(.64,.32),hudMat);hudPanel.position.set(0,-.62,-1.05);hudPanel.rotation.x=-.55;hudPanel.renderOrder=1001;hudPanel.visible=false;rig.add(hudPanel);
+const wristPanel=new THREE.Mesh(new THREE.PlaneGeometry(.18,.09),hudMat);wristPanel.position.set(0,.045,.1);wristPanel.rotation.x=-Math.PI/2+.7;wristPanel.renderOrder=1001;
+function drawVRHud(){const g=hudCx;g.clearRect(0,0,512,256);g.fillStyle='rgba(12,10,32,.75)';g.beginPath();g.roundRect?g.roundRect(0,0,512,256,28):g.rect(0,0,512,256);g.fill();
+ g.textBaseline='alphabetic';g.fillStyle='#fff';g.font='bold 46px Arial';g.fillText(Math.floor(score).toLocaleString(),22,56);
+ g.fillStyle='rgba(255,255,255,.25)';g.fillRect(22,70,300,20);g.fillStyle=hp>35?'#e33':'#ff7a00';g.fillRect(22,70,300*Math.max(0,hp)/100,20);g.strokeStyle='#fff';g.lineWidth=2;g.strokeRect(22,70,300,20);
+ g.font='bold 24px Arial';g.fillStyle='#ffd84a';g.fillText(combo>1?'COMBO x'+combo:'Crimes stopped: '+crimes,22,122);
+ g.font='bold 22px Arial';g.fillStyle='#fff';
+ if(vrDead){g.fillStyle='#f55';g.font='bold 30px Arial';g.fillText('GAME OVER',22,166);g.fillStyle='#fff';g.font='bold 20px Arial';g.fillText('Pull a trigger to play again',22,196)}
+ else if(bossOn){g.fillStyle='#8f8';g.fillText('Shoot the SKY RAIDER! (B/Y)',22,160);g.fillStyle='rgba(255,255,255,.25)';g.fillRect(22,172,300,14);g.fillStyle='#3f3';g.fillRect(22,172,300*bossHP/30,14)}
+ else if(mission){g.fillStyle='#ff6070';g.fillText('STOP THE CRIME! '+Math.ceil(mission.time)+'s',22,160);g.fillStyle='#fff';
+  g.fillText('Thugs left: '+thugs.filter(x=>x.userData.alive).length+'   '+Math.floor(Math.hypot(pos.x-mission.x,pos.z-mission.z))+'m',22,190)}
+ if(vrBanT>0&&vrBanner){g.fillStyle='#ffd84a';g.font='bold 22px Arial';const s=vrBanner.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu,'').trim();g.fillText(s.length>40?s.slice(0,40)+'…':s,22,236)}
+ g.drawImage($('map'),352,10,150,150);hudTex.needsUpdate=true}
+// comfort vignette: darkens the edges of your view when moving fast (view-space shader, so it stays locked to your eyes)
+const vig=new THREE.Mesh(new THREE.SphereGeometry(5,24,12),new THREE.ShaderMaterial({transparent:true,depthTest:false,depthWrite:false,side:THREE.BackSide,fog:false,
+ uniforms:{amt:{value:0},col:{value:new THREE.Color(0)}},
+ vertexShader:'varying vec3 vp;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vp=mv.xyz;gl_Position=projectionMatrix*mv;}',
+ fragmentShader:'uniform float amt;uniform vec3 col;varying vec3 vp;void main(){float c=dot(normalize(vp),vec3(0.,0.,-1.));float ci=cos(mix(1.0,.42,amt)),co=cos(mix(1.35,.78,amt));gl_FragColor=vec4(col,(1.-smoothstep(co,ci,c))*min(1.,amt*1.6));}'}));
+vig.renderOrder=1000;vig.frustumCulled=false;vig.visible=false;rig.add(vig);
 // ---------- game logic ----------
-function damage(n){if(hurt>0)return;hp-=n;hurt=1;shake=.5;sfx.hit();if(hp<=0)gameOver()}
+function damage(n){if(hurt>0)return;hp-=n;hurt=1;shake=.5;sfx.hit();if(vrOn)vrHands.forEach(h=>buzz(h,.9,120));if(hp<=0)gameOver()}
 function gameOver(){playing=false;best=Math.max(best,Math.floor(score));localStorage.spideyUltBest=best;document.exitPointerLock&&document.exitPointerLock();showTouch(false);
- msg.innerHTML=`<h1>GAME OVER</h1><h2>SCORE ${Math.floor(score)}</h2><p>Best: ${best} &nbsp; | &nbsp; Crimes stopped: ${crimes}</p><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><b class="go" data-mode="normal">▶ PLAY</b><b class="go" data-mode="tilt" style="background:#2a6be2">📱 TILT</b><b class="go" data-mode="hand" style="background:#1a9a4a">✋ HAND</b></div>`;msg.style.display='flex'}
+ msg.innerHTML=`<h1>GAME OVER</h1><h2>SCORE ${Math.floor(score)}</h2><p>Best: ${best} &nbsp; | &nbsp; Crimes stopped: ${crimes}</p><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><b class="go" data-mode="normal">▶ PLAY</b><b class="go" data-mode="tilt" style="background:#2a6be2">📱 TILT</b><b class="go" data-mode="hand" style="background:#1a9a4a">✋ HAND</b><b class="go" data-mode="vr" style="background:#7a3be2;opacity:${vrSupported?1:.45}">${vrLabel()}</b></div>`;msg.style.display='flex';
+ if(vrOn){vrDead=true;vrWebs[0]=vrWebs[1]=null;banner('GAME OVER! Pull a trigger to play again',999)}}
 const tmp=new THREE.Vector3(),mm=new THREE.Matrix4(),q=new THREE.Quaternion(),UP=new THREE.Vector3(0,1,0);
 function step(dt){t+=dt;motionControls(dt);if(hurt>0)hurt-=dt;if(comboT>0){comboT-=dt;if(comboT<=0)combo=1}
  hp=Math.min(100,hp+dt*2);
@@ -254,20 +334,23 @@ function step(dt){t+=dt;motionControls(dt);if(hurt>0)hurt-=dt;if(comboT>0){combo
  if(wall){// wall crawling
   vel.set(0,0,0);if(keys.KeyW||keys.Boost)pos.y+=22*dt;if(keys.KeyS)pos.y-=15*dt;const side=new THREE.Vector3().crossVectors(UP,wall.n);
   if(keys.KeyA)pos.addScaledVector(side,14*dt);if(keys.KeyD)pos.addScaledVector(side,-14*dt);
+  if(vrOn){pos.y+=-vrMove.y*(vrMove.y<0?22:15)*dt;pos.addScaledVector(side,-vrMove.x*14*dt)}
   const b=wall.b;if(pos.y>b.h){pos.y=b.h+2;pos.addScaledVector(wall.n,-3);wall=null}else if(pos.x<b.minX-3||pos.x>b.maxX+3||pos.z<b.minZ-3||pos.z>b.maxZ+3)wall=null}
  else{vel.y-=42*dt;
   if(keys.KeyW||keys.Boost)vel.addScaledVector(fwd,30*dt);if(keys.KeyS)vel.addScaledVector(fwd,-18*dt);
   if(keys.KeyA)vel.addScaledVector(right,-24*dt);if(keys.KeyD)vel.addScaledVector(right,24*dt);
+  if(vrOn){vel.addScaledVector(fwd,-vrMove.y*(vrMove.y<0?30:18)*dt);vel.addScaledVector(right,vrMove.x*24*dt)}
   // gently steer velocity toward camera heading
-  const hv=vel.clone().setY(0),hs=hv.length();if(hs>5){const target=fwd.clone().multiplyScalar(hs);hv.lerp(target,Math.min(1,dt*1.2));vel.x=hv.x;vel.z=hv.z}
+  const hv=vel.clone().setY(0),hs=hv.length();if(hs>5){const target=fwd.clone().multiplyScalar(hs);hv.lerp(target,Math.min(1,dt*(vrOn?.6:1.2)));vel.x=hv.x;vel.z=hv.z}
   pos.addScaledVector(vel,dt);
-  if(web){const d=pos.clone().sub(web.a),L=d.length();if(L>web.len){d.normalize();pos.copy(web.a).addScaledVector(d,web.len);vel.addScaledVector(d,-vel.dot(d));vel.addScaledVector(fwd,14*dt)}web.len=Math.max(18,web.len-10*dt);swingPhase+=dt}
+  const ws=[web,vrWebs[0],vrWebs[1]].filter(Boolean);// one web normally, up to two (one per hand) in VR
+  for(const w of ws){const d=pos.clone().sub(w.a),L=d.length();if(L>w.len){d.normalize();pos.copy(w.a).addScaledVector(d,w.len);vel.addScaledVector(d,-vel.dot(d));vel.addScaledVector(fwd,14*dt)}w.len=Math.max(18,w.len-10*dt)}if(ws.length)swingPhase+=dt
   const sp=vel.length();if(sp>100)vel.multiplyScalar(100/sp);
   for(const b of buildings){if(pos.x>b.minX-1.2&&pos.x<b.maxX+1.2&&pos.z>b.minZ-1.2&&pos.z<b.maxZ+1.2&&pos.y<b.h+2.2){
     if(pos.y>b.h-4&&vel.y<=0){pos.y=b.h+2.2;vel.y=0;vel.multiplyScalar(.92)}
     else{const dl=[pos.x-b.minX,b.maxX-pos.x,pos.z-b.minZ,b.maxZ-pos.z],mi=dl.indexOf(Math.min(...dl));const n=[new THREE.Vector3(-1,0,0),new THREE.Vector3(1,0,0),new THREE.Vector3(0,0,-1),new THREE.Vector3(0,0,1)][mi];
      if(mi===0)pos.x=b.minX-1.6;if(mi===1)pos.x=b.maxX+1.6;if(mi===2)pos.z=b.minZ-1.6;if(mi===3)pos.z=b.maxZ+1.6;
-     if(vel.length()>70){damage(10);burst(pos,0xffaa55,15,15)}wall={b,n};web=null;vel.set(0,0,0);yaw=Math.atan2(-n.x,-n.z);}}}
+     if(vel.length()>70){damage(10);burst(pos,0xffaa55,15,15)}wall={b,n};web=null;vrWebs[0]=vrWebs[1]=null;vel.set(0,0,0);yaw=Math.atan2(-n.x,-n.z);}}}
   if(pos.y<2.2){pos.y=2.2;if(vel.y<-45)damage(8);vel.y=0;vel.multiplyScalar(.9)}}
  pos.x=Math.max(-LIM,Math.min(LIM,pos.x));pos.z=Math.max(-LIM,Math.min(LIM,pos.z));if(pos.y>700)pos.y=700;
  score+=vel.length()*dt*.05;
@@ -314,7 +397,7 @@ function animateSpidey(dt){spidey.position.copy(pos);const sp=vel.length();
   if(web){const d=web.a.clone().sub(pos).normalize();body.rotation.set(-Math.max(-.6,Math.min(.6,d.y-.6))*.6+.2,0,Math.sin(swingPhase*2)*.15);armR.rotation.set(Math.PI*.95,0,-.15);armL.rotation.set(.6,0,.6);legL.rotation.set(.5,0,0);legR.rotation.set(-.3,0,0)}
   else if(pos.y>3&&Math.abs(vel.y)>2){const dive=vel.y<-20;body.rotation.set(dive?.9:-.3,0,0);armL.rotation.set(dive?2.5:-.4,0,dive?.4:1.3);armR.rotation.set(dive?2.5:-.4,0,dive?-.4:-1.3);legL.rotation.set(dive?.2:.9,0,.2);legR.rotation.set(dive?.3:-.2,0,-.2)}
   else{const run=Math.sin(t*12)*Math.min(1,sp/20);body.rotation.set(sp>8?.25:0,0,0);armL.rotation.set(run,0,.15);armR.rotation.set(-run,0,-.15);legL.rotation.set(-run,0,0);legR.rotation.set(run,0,0)}}
- spidey.visible=!(hurt>0&&Math.floor(t*12)%2)}
+ spidey.visible=!vrOn&&!(hurt>0&&Math.floor(t*12)%2)}
 function drawMap(){const m=$('map').getContext('2d'),R=75,S=R/300;m.clearRect(0,0,150,150);m.save();m.beginPath();m.arc(R,R,R,0,7);m.clip();m.translate(R,R);m.rotate(yaw);
  m.fillStyle='rgba(120,120,160,.55)';for(const b of buildings){const x=(b.minX-pos.x)*S,z=(b.minZ-pos.z)*S;if(Math.abs(x)>R+20||Math.abs(z)>R+20)continue;m.fillRect(x,z,(b.maxX-b.minX)*S,(b.maxZ-b.minZ)*S)}
  m.fillStyle='#ffcf33';for(const k of tokens)if(k.visible){const x=(k.position.x-pos.x)*S,z=(k.position.z-pos.z)*S;if(x*x+z*z<R*R)m.fillRect(x-1,z-1,2,2)}
@@ -324,8 +407,11 @@ function drawMap(){const m=$('map').getContext('2d'),R=75,S=R/300;m.clearRect(0,
  m.restore();m.fillStyle='#fff';m.beginPath();m.moveTo(R,R-7);m.lineTo(R-5,R+5);m.lineTo(R+5,R+5);m.fill()}
 function speedLines(){lx.clearRect(0,0,lc.width,lc.height);const sp=vel.length();if(!playing||sp<55)return;const a=Math.min(.5,(sp-55)/60);lx.strokeStyle=`rgba(255,255,255,${a})`;lx.lineWidth=2;const cx=lc.width/2,cy=lc.height*.45;
  for(let i=0;i<30;i++){const ang=Math.random()*Math.PI*2,r1=Math.max(lc.width,lc.height)*(.35+Math.random()*.2),r2=r1+60+Math.random()*120;lx.beginPath();lx.moveTo(cx+Math.cos(ang)*r1,cy+Math.sin(ang)*r1);lx.lineTo(cx+Math.cos(ang)*r2,cy+Math.sin(ang)*r2);lx.stroke()}}
-function render(){const dt=Math.min(clock.getDelta(),.05);if(playing&&!paused)step(dt);else t+=dt;
- if(!playing){yaw+=dt*.1;pos.set(Math.sin(t*.1)*200,140,Math.cos(t*.1)*200)}
+const _hd=new THREE.Vector3();
+function render(){const dt=Math.min(clock.getDelta(),.05);
+ if(vrOn){placeRig();vrInput();cam.getWorldDirection(_hd);yaw=Math.atan2(-_hd.x,-_hd.z);pitch=Math.asin(Math.max(-1,Math.min(1,_hd.y)))}// in VR you aim/steer with your head
+ if(playing&&!paused)step(dt);else t+=dt;
+ if(!playing&&!vrOn){yaw+=dt*.1;pos.set(Math.sin(t*.1)*200,140,Math.cos(t*.1)*200)}
  // cars
  for(let k=0;k<CARS;k++){const c=carData[k];c.p+=c.s*dt;if(c.p>LIM)c.p=-LIM;if(c.p<-LIM)c.p=LIM;const x=c.ax?c.p:c.lane,z=c.ax?c.lane:c.p;q.setFromAxisAngle(UP,c.ax?(c.s>0?Math.PI/2:-Math.PI/2):(c.s>0?0:Math.PI));mm.compose(tmp.set(x,1,z),q,new THREE.Vector3(1,1,1));cars.setMatrixAt(k,mm)}
  cars.instanceMatrix.needsUpdate=true;
@@ -335,17 +421,24 @@ function render(){const dt=Math.min(clock.getDelta(),.05);if(playing&&!paused)st
  for(let i=0;i<PMAX;i++){const p=parts[i];if(p){pPos[i*3]=p.p.x;pPos[i*3+1]=p.p.y;pPos[i*3+2]=p.p.z;pCol[i*3]=p.c.r;pCol[i*3+1]=p.c.g;pCol[i*3+2]=p.c.b}else{pPos[i*3+1]=-999}}
  pGeo.attributes.position.needsUpdate=pGeo.attributes.color.needsUpdate=true;
  beam.material.opacity=.18+Math.sin(t*4)*.08;
+ for(const h of vrHands){const w=vrOn&&playing&&vrWebs[h.side];h.wm.visible=!!w}
  // camera
- const sp=vel.length();fovKick*=.92;cam.fov+=((72+Math.min(22,sp*.18)+fovKick)-cam.fov)*.1;cam.updateProjectionMatrix();
+ const sp=vel.length();
+ if(vrOn){placeRig();for(const h of vrHands){const w=vrWebs[h.side];if(w&&h.wm.visible){h.c.getWorldPosition(_o);placeWeb(_o,w.a,h.wm)}}
+  sky.position.copy(rig.position);shake=0;fovKick=0;
+  const tgt=vrVig&&playing?Math.min(.85,Math.max(0,(sp-35)/50)):0;vigAmt+=(tgt-vigAmt)*Math.min(1,dt*4);
+  vig.material.uniforms.amt.value=Math.max(vigAmt,hurt>0?hurt*.55:0);vig.material.uniforms.col.value.setRGB(hurt>0?.45*hurt:0,0,0);
+  if(vrBanT>0&&vrBanT<900)vrBanT-=dt;if((vrHudT-=dt)<=0){vrHudT=.1;drawVRHud()}}
+ else{fovKick*=.92;cam.fov+=((72+Math.min(22,sp*.18)+fovKick)-cam.fov)*.1;cam.updateProjectionMatrix();
  const back=lookDir().multiplyScalar(-(13+Math.min(6,sp*.05)));const want=pos.clone().add(back).add(new THREE.Vector3(0,4,0));
  if(playing){ray.set(pos.clone().add(new THREE.Vector3(0,2,0)),want.clone().sub(pos).normalize());ray.far=want.distanceTo(pos);const h=ray.intersectObjects(bMeshes)[0];if(h)want.copy(h.point).addScaledVector(ray.ray.direction,-1)}
  cam.position.lerp(want,playing?.35:1);if(shake>0){cam.position.x+=rnd(shake);cam.position.y+=rnd(shake);shake=Math.max(0,shake-dt)}
- cam.lookAt(pos.clone().add(new THREE.Vector3(0,2,0)).addScaledVector(lookDir(),10));sky.position.copy(cam.position);
+ cam.lookAt(pos.clone().add(new THREE.Vector3(0,2,0)).addScaledVector(lookDir(),10));sky.position.copy(cam.position)}
  if(banTimer>0){banTimer-=dt;if(banTimer<=0)$('banner').style.opacity=0}
  if(playing){$('score').textContent=Math.floor(score).toLocaleString();$('hp').style.width=Math.max(0,hp)+'%';$('combo').textContent=combo>1?'COMBO x'+combo:'';
   $('info').textContent=`Speed ${Math.floor(sp)}  •  Crimes ${crimes}  •  Best ${best}`;
   $('mission').textContent=mission?`🚨 Stop the crime! ${Math.ceil(mission.time)}s  •  Thugs left: ${thugs.filter(x=>x.userData.alive).length}  •  ${Math.floor(Math.hypot(pos.x-mission.x,pos.z-mission.z))}m`:(bossOn?'💥 Shoot the Sky Raider with web balls!':'');
   drawMap()}
- speedLines();renderer.render(scene,cam);requestAnimationFrame(render)}
-pos.set(0,140,200);render();
+ if(!vrOn)speedLines();renderer.render(scene,cam)}
+pos.set(0,140,200);renderer.setAnimationLoop(render);// setAnimationLoop drives both normal and WebXR frames
 </script></body></html>
